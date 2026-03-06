@@ -167,6 +167,10 @@ function positiveInt(raw, fallback, name) {
 function gitSync(...args) {
   const r = spawnSync('git', args, { shell: false, stdio: 'pipe' });
   if (r.error) throw r.error;
+  if (r.status !== 0) {
+    const stderr = r.stderr?.toString().trim() || 'unknown error';
+    throw new Error(`git ${args[0]} failed (exit ${r.status}): ${stderr}`);
+  }
   return r;
 }
 
@@ -194,8 +198,8 @@ async function run() {
     // Validate output path stays within the workspace
     const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
     const absPath = path.resolve(workspace, outputPath);
-    const workspaceResolved = path.resolve(workspace);
-    if (!absPath.startsWith(workspaceResolved + path.sep) && absPath !== workspaceResolved) {
+    const relative = path.relative(workspace, absPath);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
       throw new Error(`output_path must be inside the workspace (got: ${outputPath})`);
     }
 
