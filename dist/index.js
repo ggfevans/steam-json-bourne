@@ -19790,13 +19790,16 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
 var core = require_core();
 var fs = require("fs");
 var path = require("path");
+var { spawnSync } = require("child_process");
 var STEAM_API_BASE = "https://api.steampowered.com";
 async function steamGet(iface, method, version, params) {
   const url = new URL(`${STEAM_API_BASE}/${iface}/${method}/${version}/`);
   for (const [k, v] of Object.entries(params)) {
     if (v !== void 0 && v !== null) url.searchParams.set(k, v);
   }
-  const res = await fetch(url);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 3e4);
+  const res = await fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
   if (!res.ok) throw new Error(`Steam API ${method} returned ${res.status}: ${await res.text()}`);
   return res.json();
 }
@@ -19898,18 +19901,36 @@ function updateDailyLog(existingLog, deltas, maxDays) {
   log.sort((a, b) => b.date.localeCompare(a.date));
   return log.slice(0, maxDays);
 }
+function positiveInt(raw, fallback, name) {
+  const n = parseInt(raw || String(fallback), 10);
+  if (!Number.isFinite(n) || n < 1) throw new Error(`${name} must be a positive integer, got: ${raw}`);
+  return n;
+}
+function gitSync(...args) {
+  const r = spawnSync("git", args, { shell: false, stdio: "pipe" });
+  if (r.error) throw r.error;
+  return r;
+}
 async function run() {
   try {
     const apiKey = core.getInput("steam_api_key", { required: true });
     const steamId = core.getInput("steam_id", { required: true });
     const outputPath = core.getInput("output_path") || "src/data/gaming.json";
     const includeFree = core.getInput("include_free_games") !== "false";
-    const recentCount = parseInt(core.getInput("recent_count") || "10", 10);
-    const dailyLogDays = parseInt(core.getInput("daily_log_days") || "90", 10);
+    const recentCount = positiveInt(core.getInput("recent_count"), 10, "recent_count");
+    const dailyLogDays = positiveInt(core.getInput("daily_log_days"), 90, "daily_log_days");
     const skipCommit = core.getInput("skip_commit") === "true";
-    core.info(`Fetching Steam data for ID ${steamId}...`);
+    if (!/^\d{17}$/.test(steamId)) {
+      throw new Error(`steam_id must be a 17-digit numeric Steam ID, got: ${steamId}`);
+    }
+    core.info("Fetching Steam data...");
+    const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
+    const absPath = path.resolve(workspace, outputPath);
+    const workspaceResolved = path.resolve(workspace);
+    if (!absPath.startsWith(workspaceResolved + path.sep) && absPath !== workspaceResolved) {
+      throw new Error(`output_path must be inside the workspace (got: ${outputPath})`);
+    }
     let existing = {};
-    const absPath = path.resolve(outputPath);
     if (fs.existsSync(absPath)) {
       try {
         existing = JSON.parse(fs.readFileSync(absPath, "utf8"));
@@ -19956,14 +19977,13 @@ async function run() {
     const changesDetected = deltas.length > 0 || !existing.lastUpdated || JSON.stringify(existing.stats) !== JSON.stringify(output.stats);
     core.setOutput("changes_detected", changesDetected.toString());
     if (!skipCommit && changesDetected) {
-      const { execSync } = require("child_process");
       try {
-        execSync('git config user.name "github-actions[bot]"');
-        execSync('git config user.email "github-actions[bot]@users.noreply.github.com"');
-        execSync(`git add "${outputPath}"`);
-        const status = execSync('git diff --staged --quiet 2>&1 || echo "changed"').toString().trim();
-        if (status === "changed") {
-          execSync('git commit -m "chore: update steam gaming data"');
+        gitSync("config", "user.name", "github-actions[bot]");
+        gitSync("config", "user.email", "github-actions[bot]@users.noreply.github.com");
+        gitSync("add", absPath);
+        const hasStaged = spawnSync("git", ["diff", "--staged", "--quiet"], { shell: false }).status !== 0;
+        if (hasStaged) {
+          gitSync("commit", "-m", "chore: update steam gaming data");
           core.info("Committed changes");
         }
       } catch (e) {
