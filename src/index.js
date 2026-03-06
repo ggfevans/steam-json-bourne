@@ -16,7 +16,15 @@ async function steamGet(iface, method, version, params) {
   }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 30_000);
-  const res = await fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+  let res;
+  try {
+    res = await fetch(url, { signal: ctrl.signal });
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error(`Steam API ${method} timed out after 30s`);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) throw new Error(`Steam API ${method} returned ${res.status}: ${await res.text()}`);
   return res.json();
 }
