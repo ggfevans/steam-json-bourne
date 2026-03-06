@@ -277,6 +277,8 @@ async function run() {
         gitSync('config', 'user.name', 'github-actions[bot]');
         gitSync('config', 'user.email', 'github-actions[bot]@users.noreply.github.com');
         gitSync('add', absPath);
+        // Note: not using gitSync here — git diff --staged --quiet intentionally exits non-zero
+        // when there ARE staged changes, so gitSync would throw. Inspect status directly instead.
         const hasStaged = spawnSync('git', ['diff', '--staged', '--quiet'], { shell: false }).status !== 0;
         if (hasStaged) {
           gitSync('commit', '-m', 'chore: update steam gaming data');
