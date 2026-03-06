@@ -163,8 +163,10 @@ function updateDailyLog(existingLog, deltas, maxDays) {
 // ---------------------------------------------------------------------------
 
 function positiveInt(raw, fallback, name) {
-  const n = parseInt(raw || String(fallback), 10);
-  if (!Number.isFinite(n) || n < 1) throw new Error(`${name} must be a positive integer, got: ${raw}`);
+  const str = raw || String(fallback);
+  if (!/^\d+$/.test(str)) throw new Error(`${name} must be a positive integer, got: ${raw}`);
+  const n = Number(str);
+  if (n < 1) throw new Error(`${name} must be a positive integer, got: ${raw}`);
   return n;
 }
 
@@ -287,7 +289,9 @@ async function run() {
         gitSync('add', absPath);
         // Note: not using gitSync here — git diff --staged --quiet intentionally exits non-zero
         // when there ARE staged changes, so gitSync would throw. Inspect status directly instead.
-        const hasStaged = spawnSync('git', ['diff', '--staged', '--quiet'], { shell: false }).status !== 0;
+        const diffResult = spawnSync('git', ['diff', '--staged', '--quiet'], { shell: false });
+        if (diffResult.error) throw diffResult.error;
+        const hasStaged = diffResult.status !== 0;
         if (hasStaged) {
           gitSync('commit', '-m', 'chore: update steam gaming data');
           core.info('Committed changes');
