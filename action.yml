@@ -1,0 +1,43 @@
+name: 'Steam JSON Bourne'
+description: 'Fetch Steam gameplay data — playtime snapshots, daily deltas, and recently played games with artwork'
+author: 'ggfevans'
+
+branding:
+  icon: 'play'
+  color: 'blue'
+
+inputs:
+  steam_api_key:
+    description: 'Steam Web API key (https://steamcommunity.com/dev/apikey)'
+    required: true
+  steam_id:
+    description: 'Steam 64-bit numeric ID'
+    required: true
+  output_path:
+    description: 'Path to write the output JSON file'
+    required: false
+    default: 'src/data/gaming.json'
+  include_free_games:
+    description: 'Include free-to-play games in owned games list'
+    required: false
+    default: 'true'
+  recent_count:
+    description: 'Number of recently played games to include'
+    required: false
+    default: '10'
+  daily_log_days:
+    description: 'Number of days of daily playtime history to retain'
+    required: false
+    default: '90'
+  skip_commit:
+    description: 'Skip auto-commit (set true if you handle commits in the workflow)'
+    required: false
+    default: 'false'
+
+outputs:
+  changes_detected:
+    description: 'Whether any playtime changes were detected since last run'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
