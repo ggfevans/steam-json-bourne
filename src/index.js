@@ -291,7 +291,11 @@ async function run() {
         // when there ARE staged changes, so gitSync would throw. Inspect status directly instead.
         const diffResult = spawnSync('git', ['diff', '--staged', '--quiet'], { shell: false });
         if (diffResult.error) throw diffResult.error;
-        const hasStaged = diffResult.status !== 0;
+        if (diffResult.status > 1) {
+          const stderr = diffResult.stderr?.toString().trim() || 'unknown error';
+          throw new Error(`git diff failed (exit ${diffResult.status}): ${stderr}`);
+        }
+        const hasStaged = diffResult.status === 1;
         if (hasStaged) {
           gitSync('commit', '-m', 'chore: update steam gaming data');
           core.info('Committed changes');
