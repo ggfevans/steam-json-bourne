@@ -1,7 +1,7 @@
-const core = require('@actions/core');
-const fs = require('fs');
-const path = require('path');
-const { spawnSync } = require('child_process');
+import * as core from '@actions/core';
+import fs from 'fs';
+import path from 'path';
+import { spawnSync } from 'child_process';
 
 // ---------------------------------------------------------------------------
 // Steam Web API helpers
