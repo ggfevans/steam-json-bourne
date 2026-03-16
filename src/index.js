@@ -1,6 +1,7 @@
-const core = require('@actions/core');
-const fs = require('fs');
-const path = require('path');
+import * as core from '@actions/core';
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
 
 // ---------------------------------------------------------------------------
 // Steam Web API helpers
@@ -234,7 +235,6 @@ async function run() {
     core.setOutput('changes_detected', changesDetected.toString());
 
     if (!skipCommit && changesDetected) {
-      const { execSync } = require('child_process');
       try {
         execSync('git config user.name "github-actions[bot]"');
         execSync('git config user.email "github-actions[bot]@users.noreply.github.com"');
