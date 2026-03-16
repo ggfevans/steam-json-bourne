@@ -16,7 +16,7 @@
   "author": "ggfevans",
   "license": "MIT",
   "dependencies": {
-    "@actions/core": "^1.10.1"
+    "@actions/core": "^3.0.0"
   },
   "devDependencies": {
     "esbuild": "^0.27.3"
