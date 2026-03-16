@@ -8,7 +8,7 @@ Open a [GitHub issue](https://github.com/ggfevans/steam-json-bourne/issues/new) 
 
 - What you expected to happen
 - What actually happened
-- Your workflow configuration (redact secrets)
+- Your workflow configuration (remove or mask all secrets before posting)
 - Any relevant log output from the action run
 
 ## Suggesting Features
