@@ -48,4 +48,4 @@ Do not open public issues for security vulnerabilities. See [SECURITY.md](SECURI
 
 ## Licence
 
-By contributing, you agree that your contributions will be licenced under the MIT Licence.
+By contributing, you agree that your contributions will be licensed under the MIT Licence.
