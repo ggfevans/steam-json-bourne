@@ -19121,11 +19121,14 @@ async function steamGet(iface, method, version, params) {
   } catch (err) {
     if (err.name === "AbortError") throw new Error(`Steam API ${method} timed out after 30s`);
     throw err;
-  } finally {
-    clearTimeout(timer);
   }
-  if (!res.ok) throw new Error(`Steam API ${method} returned ${res.status}: ${await res.text()}`);
-  return res.json();
+  if (!res.ok) {
+    clearTimeout(timer);
+    throw new Error(`Steam API ${method} returned ${res.status}: ${await res.text()}`);
+  }
+  const body = await res.json();
+  clearTimeout(timer);
+  return body;
 }
 async function getOwnedGames(apiKey, steamId, includeFree) {
   const data = await steamGet("IPlayerService", "GetOwnedGames", "v1", {
@@ -19251,19 +19254,22 @@ async function run() {
     const dailyLogDays = positiveInt(getInput("daily_log_days"), 90, "daily_log_days");
     const skipCommit = getInput("skip_commit") === "true";
     if (!/^\d{17}$/.test(steamId)) {
-      throw new Error(`steam_id must be a 17-digit numeric Steam ID, got: ${steamId}`);
+      throw new Error("steam_id must be a 17-digit numeric Steam ID");
     }
     info("Fetching Steam data...");
-    const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
+    const workspace = import_fs2.default.realpathSync(process.env.GITHUB_WORKSPACE ?? process.cwd());
     const absPath = import_path.default.resolve(workspace, outputPath);
-    const relative = import_path.default.relative(workspace, absPath);
+    const parentDir = import_path.default.dirname(absPath);
+    const realDir = import_fs2.default.realpathSync(parentDir);
+    const realAbsPath = import_path.default.join(realDir, import_path.default.basename(absPath));
+    const relative = import_path.default.relative(workspace, realAbsPath);
     if (relative.startsWith("..") || import_path.default.isAbsolute(relative)) {
-      throw new Error(`output_path must be inside the workspace (got: ${outputPath})`);
+      throw new Error("output_path must be inside the workspace");
     }
     let existing = {};
-    if (import_fs2.default.existsSync(absPath)) {
+    if (import_fs2.default.existsSync(realAbsPath)) {
       try {
-        existing = JSON.parse(import_fs2.default.readFileSync(absPath, "utf8"));
+        existing = JSON.parse(import_fs2.default.readFileSync(realAbsPath, "utf8"));
         info("Loaded existing data file for delta calculation");
       } catch (e) {
         warning(`Could not parse existing file: ${e.message}`);
@@ -19300,9 +19306,9 @@ async function run() {
         games: currentSnapshot
       }
     };
-    const dir = import_path.default.dirname(absPath);
+    const dir = import_path.default.dirname(realAbsPath);
     if (!import_fs2.default.existsSync(dir)) import_fs2.default.mkdirSync(dir, { recursive: true });
-    import_fs2.default.writeFileSync(absPath, JSON.stringify(output, null, 2) + "\n");
+    import_fs2.default.writeFileSync(realAbsPath, JSON.stringify(output, null, 2) + "\n");
     info(`Wrote output to ${outputPath}`);
     const changesDetected = deltas.length > 0 || !existing.lastUpdated || JSON.stringify(existing.stats) !== JSON.stringify(output.stats);
     setOutput("changes_detected", changesDetected.toString());

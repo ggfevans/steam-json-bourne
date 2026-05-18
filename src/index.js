@@ -22,11 +22,14 @@ async function steamGet(iface, method, version, params) {
   } catch (err) {
     if (err.name === 'AbortError') throw new Error(`Steam API ${method} timed out after 30s`);
     throw err;
-  } finally {
-    clearTimeout(timer);
   }
-  if (!res.ok) throw new Error(`Steam API ${method} returned ${res.status}: ${await res.text()}`);
-  return res.json();
+  if (!res.ok) {
+    clearTimeout(timer);
+    throw new Error(`Steam API ${method} returned ${res.status}: ${await res.text()}`);
+  }
+  const body = await res.json();
+  clearTimeout(timer);
+  return body;
 }
 
 async function getOwnedGames(apiKey, steamId, includeFree) {
@@ -200,24 +203,28 @@ async function run() {
 
     // Validate Steam ID — must be a 17-digit numeric string
     if (!/^\d{17}$/.test(steamId)) {
-      throw new Error(`steam_id must be a 17-digit numeric Steam ID, got: ${steamId}`);
+      throw new Error('steam_id must be a 17-digit numeric Steam ID');
     }
 
     core.info('Fetching Steam data...');
 
-    // Validate output path stays within the workspace
-    const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
+    // Validate output path stays within the workspace (resolve symlinks too)
+    const workspace = fs.realpathSync(process.env.GITHUB_WORKSPACE ?? process.cwd());
     const absPath = path.resolve(workspace, outputPath);
-    const relative = path.relative(workspace, absPath);
+    // Resolve symlinks in existing directory segments; the file itself may not exist yet
+    const parentDir = path.dirname(absPath);
+    const realDir = fs.realpathSync(parentDir);
+    const realAbsPath = path.join(realDir, path.basename(absPath));
+    const relative = path.relative(workspace, realAbsPath);
     if (relative.startsWith('..') || path.isAbsolute(relative)) {
-      throw new Error(`output_path must be inside the workspace (got: ${outputPath})`);
+      throw new Error('output_path must be inside the workspace');
     }
 
     // Load existing data file (if any) for delta calculation
     let existing = {};
-    if (fs.existsSync(absPath)) {
+    if (fs.existsSync(realAbsPath)) {
       try {
-        existing = JSON.parse(fs.readFileSync(absPath, 'utf8'));
+        existing = JSON.parse(fs.readFileSync(realAbsPath, 'utf8'));
         core.info('Loaded existing data file for delta calculation');
       } catch (e) {
         core.warning(`Could not parse existing file: ${e.message}`);
@@ -270,9 +277,9 @@ async function run() {
     };
 
     // Write output
-    const dir = path.dirname(absPath);
+    const dir = path.dirname(realAbsPath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(absPath, JSON.stringify(output, null, 2) + '\n');
+    fs.writeFileSync(realAbsPath, JSON.stringify(output, null, 2) + '\n');
     core.info(`Wrote output to ${outputPath}`);
 
     // Git commit (unless skipped)
