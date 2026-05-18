@@ -1,0 +1,26 @@
+# .github/workflows/steam.yml
+#
+# Fetches your Steam gaming data and commits it as JSON.
+# Runs daily and on manual trigger.
+
+name: Update Steam Data
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Fetch Steam data
+        uses: ggfevans/steam-json-bourne@main
+        with:
+          steam_api_key: ${{ secrets.STEAM_API_KEY }}
+          steam_id: ${{ secrets.STEAM_ID }}

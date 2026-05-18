@@ -1,0 +1,131 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
+
+jobs:
+  update-refs:
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.release.prerelease }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Update self-reference SHAs in docs
+        run: |
+          TAG_NAME="${{ github.event.release.tag_name }}"
+          RELEASE_SHA="${{ github.sha }}"
+
+          echo "Updating docs: self-references -> ${RELEASE_SHA} # ${TAG_NAME}"
+
+          sed -i -E "s|uses: ggfevans/steam-json-bourne@[^[:space:]]+( # [^[:space:]]+)?|uses: ggfevans/steam-json-bourne@${RELEASE_SHA} # ${TAG_NAME}|g" README.md example.yml
+
+          if ! grep -q "ggfevans/steam-json-bourne@${RELEASE_SHA}" README.md; then
+            echo "::error::Failed to update self-reference in README.md"
+            exit 1
+          fi
+
+          if ! grep -q "ggfevans/steam-json-bourne@${RELEASE_SHA}" example.yml; then
+            echo "::error::Failed to update self-reference in example.yml"
+            exit 1
+          fi
+
+      - name: Update SECURITY.md supported versions
+        run: |
+          TAG_NAME="${{ github.event.release.tag_name }}"
+          VERSION="${TAG_NAME#v}"
+
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Could not parse semver from ${TAG_NAME}, skipping SECURITY.md update"
+            exit 0
+          fi
+
+          MAJOR_MINOR="${VERSION%.*}"
+          echo "Updating SECURITY.md to ${MAJOR_MINOR}.x"
+
+          sed -i -E "s/\| [0-9]+\.[0-9]+\.x[[:space:]]+\| Yes[[:space:]]+\|/| ${MAJOR_MINOR}.x   | Yes       |/" SECURITY.md
+          sed -i -E "s/\| < [0-9]+\.[0-9]+[[:space:]]+\| No[[:space:]]+\|/| < ${MAJOR_MINOR}   | No        |/" SECURITY.md
+
+          if ! grep -Fq "| ${MAJOR_MINOR}.x" SECURITY.md; then
+            echo "::error::Failed to update SECURITY.md with ${MAJOR_MINOR}.x"
+            exit 1
+          fi
+
+          if ! grep -Fq "| < ${MAJOR_MINOR}" SECURITY.md; then
+            echo "::error::Failed to update SECURITY.md lower-bound row"
+            exit 1
+          fi
+
+          echo "SECURITY.md now lists ${MAJOR_MINOR}.x as supported"
+
+      - name: Update CHANGELOG.md
+        run: |
+          TAG_NAME="${{ github.event.release.tag_name }}"
+          RELEASE_DATE=$(date -u +%Y-%m-%d)
+
+          # Find previous semver tag (excluding current)
+          PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]' | grep -v "^${TAG_NAME}$" | head -1)
+
+          if [ -n "${PREV_TAG}" ]; then
+            echo "Generating changelog: ${PREV_TAG}..${TAG_NAME}"
+            git log --format="- %s" "${PREV_TAG}..${TAG_NAME}" | grep -v "^- docs: update references" > /tmp/commits.txt || true
+          else
+            echo "No previous tag found, listing all commits"
+            git log --format="- %s" "${TAG_NAME}" | grep -v "^- docs: update references" > /tmp/commits.txt || true
+          fi
+
+          if [ -f CHANGELOG.md ]; then
+            {
+              head -1 CHANGELOG.md
+              printf '\n## %s (%s)\n\n' "${TAG_NAME}" "${RELEASE_DATE}"
+              cat /tmp/commits.txt
+              tail -n +2 CHANGELOG.md
+            } > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
+          else
+            {
+              printf '# Changelog\n\n## %s (%s)\n\n' "${TAG_NAME}" "${RELEASE_DATE}"
+              cat /tmp/commits.txt
+            } > CHANGELOG.md
+          fi
+
+          echo "CHANGELOG.md updated with ${TAG_NAME} entry"
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add README.md SECURITY.md example.yml CHANGELOG.md
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          TAG_NAME="${{ github.event.release.tag_name }}"
+          git commit -m "docs: update references for ${TAG_NAME}"
+          git push origin main
+
+      - name: Update major version tag
+        run: |
+          TAG_NAME="${{ github.event.release.tag_name }}"
+          MAJOR=$(echo "${TAG_NAME}" | grep -oE '^v[0-9]+' || true)
+
+          if [ -z "${MAJOR}" ]; then
+            echo "::warning::Could not extract major version from ${TAG_NAME}"
+            exit 0
+          fi
+
+          echo "Moving ${MAJOR} tag to HEAD (includes docs update)"
+          git tag -fa "${MAJOR}" -m "${MAJOR} - latest ${MAJOR}.x release" HEAD
+          git push origin "${MAJOR}" --force
