@@ -39,5 +39,5 @@ outputs:
     description: 'Whether any playtime changes were detected since last run'
 
 runs:
-  using: 'node25'
+  using: 'node24'
   main: 'dist/index.js'
