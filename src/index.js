@@ -58,15 +58,23 @@ async function fetchAppDetails(appId) {
   const timer = setTimeout(() => controller.abort(), 5000);
   try {
     const res = await fetch(url, { signal: controller.signal });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      core.debug(`appdetails ${appId} → HTTP ${res.status}`);
+      return null;
+    }
     const json = await res.json();
     const entry = json?.[appId];
-    if (!entry?.success || !entry.data) return null;
+    if (!entry?.success || !entry.data) {
+      core.debug(`appdetails ${appId} → unsuccessful entry: ${JSON.stringify(entry)}`);
+      return null;
+    }
     return {
       headerUrl: entry.data.header_image ?? null,
       capsuleUrl: entry.data.capsule_image ?? null,
     };
-  } catch {
+  } catch (err) {
+    const reason = err?.name === 'AbortError' ? 'timeout' : (err?.message ?? String(err));
+    core.debug(`appdetails ${appId} → ${reason}`);
     return null;
   } finally {
     clearTimeout(timer);
