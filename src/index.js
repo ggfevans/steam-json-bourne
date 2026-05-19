@@ -50,6 +50,7 @@ async function getPlayerSummary(apiKey, steamId) {
 // on the legacy pattern as best-effort — consumers should fall back gracefully.
 
 const LEGACY_CDN_BASE = 'https://cdn.akamai.steamstatic.com/steam/apps';
+const ARTWORK_CONCURRENCY = 4; // bounded so high `recent_count` doesn't burst Steam
 
 async function fetchAppDetails(appId) {
   const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&filters=basic`;
@@ -120,7 +121,7 @@ async function buildRecentlyPlayed(games, count) {
     .sort((a, b) => b.rtime_last_played - a.rtime_last_played)
     .slice(0, count);
 
-  return Promise.all(played.map(async (g) => ({
+  const buildEntry = async (g) => ({
     name: g.name,
     appId: g.appid,
     ...(await artworkUrls(g.appid)),
@@ -133,7 +134,14 @@ async function buildRecentlyPlayed(games, count) {
       linux: g.playtime_linux_forever ?? 0,
       deck: g.playtime_deck_forever ?? 0,
     },
-  })));
+  });
+
+  const result = [];
+  for (let i = 0; i < played.length; i += ARTWORK_CONCURRENCY) {
+    const chunk = played.slice(i, i + ARTWORK_CONCURRENCY);
+    result.push(...(await Promise.all(chunk.map(buildEntry))));
+  }
+  return result;
 }
 
 function buildStats(games) {

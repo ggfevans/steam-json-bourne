@@ -45,7 +45,7 @@ Everything lives in `src/index.js`. There are no modules — it's a single-file 
 
 **Snapshot model:** The `snapshot` field stores playtime-forever values from the previous run. Deltas are computed by diffing current vs snapshot. The daily log entry for today is replaced on re-runs (idempotent).
 
-**Artwork URLs:** Generated from predictable Akamai CDN patterns — no extra API calls needed.
+**Artwork URLs:** `headerUrl` and `capsuleUrl` are fetched per-game from Steam's storefront `appdetails` endpoint (the legacy predictable CDN paths 404 for newer titles). Calls are bounded to `ARTWORK_CONCURRENCY` (4) and fall back to the legacy CDN pattern on any failure. `portraitUrl` stays on the legacy `library_600x900.jpg` path — Steam exposes no public URL for that asset on newer titles, so it's best-effort.
 
 **Auto-commit:** Runs `git` directly via shell commands at the end of `run()` unless `skip_commit` is `true`.
 
