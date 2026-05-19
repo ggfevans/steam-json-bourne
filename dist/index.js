@@ -19136,15 +19136,33 @@ async function getPlayerSummary(apiKey, steamId) {
   const players = data?.response?.players ?? [];
   return players[0] ?? null;
 }
-function artworkUrls(appId) {
-  const base = "https://cdn.akamai.steamstatic.com/steam/apps";
+var LEGACY_CDN_BASE = "https://cdn.akamai.steamstatic.com/steam/apps";
+async function fetchAppDetails(appId) {
+  const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&filters=basic`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5e3);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const entry = json?.[appId];
+    if (!entry?.success || !entry.data) return null;
+    return {
+      headerUrl: entry.data.header_image ?? null,
+      capsuleUrl: entry.data.capsule_image ?? null
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function artworkUrls(appId) {
+  const details = await fetchAppDetails(appId);
   return {
-    headerUrl: `${base}/${appId}/header.jpg`,
-    // 460×215
-    capsuleUrl: `${base}/${appId}/capsule_231x87.jpg`,
-    // 231×87
-    portraitUrl: `${base}/${appId}/library_600x900.jpg`
-    // 600×900 (poster-style)
+    headerUrl: details?.headerUrl ?? `${LEGACY_CDN_BASE}/${appId}/header.jpg`,
+    capsuleUrl: details?.capsuleUrl ?? `${LEGACY_CDN_BASE}/${appId}/capsule_231x87.jpg`,
+    portraitUrl: `${LEGACY_CDN_BASE}/${appId}/library_600x900.jpg`
   };
 }
 function buildSnapshot(games) {
@@ -19171,12 +19189,12 @@ function computeDeltas(prevSnapshot, currentSnapshot, gamesMap) {
   deltas.sort((a, b) => b.minutesPlayed - a.minutesPlayed);
   return deltas;
 }
-function buildRecentlyPlayed(games, count) {
+async function buildRecentlyPlayed(games, count) {
   const played = games.filter((g) => g.rtime_last_played > 0).sort((a, b) => b.rtime_last_played - a.rtime_last_played).slice(0, count);
-  return played.map((g) => ({
+  return Promise.all(played.map(async (g) => ({
     name: g.name,
     appId: g.appid,
-    ...artworkUrls(g.appid),
+    ...await artworkUrls(g.appid),
     playtimeForeverMinutes: g.playtime_forever ?? 0,
     playtime2WeeksMinutes: g.playtime_2weeks ?? 0,
     lastPlayed: new Date(g.rtime_last_played * 1e3).toISOString(),
@@ -19186,7 +19204,7 @@ function buildRecentlyPlayed(games, count) {
       linux: g.playtime_linux_forever ?? 0,
       deck: g.playtime_deck_forever ?? 0
     }
-  }));
+  })));
 }
 function buildStats(games) {
   const played = games.filter((g) => (g.playtime_forever ?? 0) > 0);
@@ -19258,7 +19276,7 @@ async function run() {
         avatarUrl: playerSummary.avatarfull,
         profileUrl: playerSummary.profileurl
       } : existing.profile ?? { steamId },
-      recentlyPlayed: buildRecentlyPlayed(games, recentCount),
+      recentlyPlayed: await buildRecentlyPlayed(games, recentCount),
       stats: buildStats(games),
       dailyLog: updateDailyLog(existing.dailyLog, deltas, dailyLogDays),
       snapshot: {
